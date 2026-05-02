@@ -77,6 +77,20 @@ export async function main(ns: NS): Promise<void> {
 
     // --- Worker starten ---
     for (const host of workers) {
+      const scriptsToStop = [CONFIG.WEAKEN_SCRIPT, CONFIG.GROW_SCRIPT, CONFIG.HACK_SCRIPT].filter(
+        (workerScript) => workerScript !== script,
+      );
+
+      for (const workerScript of scriptsToStop) {
+        const processes = ns.ps(host);
+        processes.forEach((process: { filename: string; args: (string | number | boolean)[]; pid: number }) => {
+          if (process.filename !== workerScript) return;
+          if (process.args[0] !== target.hostname) return;
+
+          ns.kill(process.pid);
+        });
+      }
+
       const maxRam = ns.getServerMaxRam(host);
       const usedRam = ns.getServerUsedRam(host);
       const freeRam = maxRam - usedRam;
