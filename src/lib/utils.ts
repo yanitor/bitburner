@@ -3,9 +3,9 @@ import type { ServerInfo } from '@/lib/types';
 
 export const CONFIG = {
   // Worker-Scripts
-  HACK_SCRIPT: '/workers/hack.ts',
-  GROW_SCRIPT: '/workers/grow.ts',
-  WEAKEN_SCRIPT: '/workers/weaken.ts',
+  HACK_SCRIPT: '/workers/hack.js',
+  GROW_SCRIPT: '/workers/grow.js',
+  WEAKEN_SCRIPT: '/workers/weaken.js',
 
   //Hack-Strategies
   HACK_PERCENT: 0.7,
