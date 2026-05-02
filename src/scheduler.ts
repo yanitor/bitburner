@@ -8,12 +8,12 @@ export async function main(ns: NS): Promise<void> {
   ns.disableLog('getServerMoneyAvailable');
   ns.ui.openTail();
 
-  let script: string;
-  let mode: string;
   const interval = CONFIG.SCHEDULER_INTERVAL;
 
   while (true) {
     ns.clearLog();
+    let totalThreads = 0; // pro Zyklus zurücksetzen
+
     const targets = getBestTargets(ns, 1);
     const target = targets[0];
 
@@ -23,18 +23,25 @@ export async function main(ns: NS): Promise<void> {
       continue;
     }
 
+    const allServers = discoverServers(ns);
+    const workers = allServers.filter((hostname) => {
+      return ns.hasRootAccess(hostname) && ns.getServerMaxRam(hostname) > 0 && hostname !== 'home';
+    });
+
+    // --- Zielzustand berechnen (einmal pro Zyklus) ---
     const sec = ns.getServerSecurityLevel(target.hostname);
     const minSec = ns.getServerMinSecurityLevel(target.hostname);
     const money = ns.getServerMoneyAvailable(target.hostname);
     const maxMoney = ns.getServerMaxMoney(target.hostname);
 
-    const needWeaken = sec > minSec + CONFIG.SECURITY_THRESHOLD;
-    const needGrow = !needWeaken && money < maxMoney * CONFIG.MONEY_THRESHOLD;
+    const securityThresh = minSec + CONFIG.SECURITY_THRESHOLD;
+    const moneyThresh = maxMoney * CONFIG.MONEY_THRESHOLD;
 
-    const allServers = discoverServers(ns);
-    const workers = allServers.filter((hostname) => {
-      return ns.hasRootAccess(hostname) && ns.getServerMaxRam(hostname) > 0 && hostname !== 'home';
-    });
+    const needWeaken = sec > securityThresh;
+    const needGrow = !needWeaken && money < moneyThresh;
+
+    let script: string;
+    let mode: string;
 
     if (needWeaken) {
       script = CONFIG.WEAKEN_SCRIPT;
@@ -48,22 +55,27 @@ export async function main(ns: NS): Promise<void> {
     }
 
     const scriptRam = ns.getScriptRam(script, 'home');
-
-    const moneyRatio = maxMoney > 0 ? money / maxMoney : 0;
     const secRatio = minSec > 0 ? sec / minSec : 0;
 
-    let totalThreads = 0;
-
+    // --- Dashboard nur einmal pro Zyklus ausgeben ---
     ns.print('=== Scheduler Dashboard ===');
     ns.print(`Mode:     ${mode}`);
     ns.print(`Target:   ${target.hostname}`);
-    ns.print(`Money: ${money.toLocaleString()} / ${maxMoney.toLocaleString()}`);
-    ns.print(`Security: ${sec.toFixed(2)} / ${minSec.toFixed(2)} ` + `(${secRatio.toFixed(2)}x)`);
+    ns.print(
+      `Money:    ${money.toLocaleString()} / ${maxMoney.toLocaleString()} ` +
+        `(thresh=${moneyThresh.toLocaleString()})`,
+    );
+    ns.print(
+      `Security: ${sec.toFixed(2)} / ${minSec.toFixed(2)} ` +
+        `(thresh=${securityThresh.toFixed(2)}, ratio=${secRatio.toFixed(2)}x)`,
+    );
+    ns.print(`Flags:    needWeaken=${needWeaken} needGrow=${needGrow}`);
     ns.print(`Workers:  ${workers.length}`);
     ns.print(`Script:   ${script} (${scriptRam.toFixed(2)} GB)`);
     ns.print(`Interval: ${interval} ms`);
     ns.print('---------------------------------');
 
+    // --- Worker starten ---
     for (const host of workers) {
       const maxRam = ns.getServerMaxRam(host);
       const usedRam = ns.getServerUsedRam(host);
@@ -75,9 +87,9 @@ export async function main(ns: NS): Promise<void> {
       if (ns.isRunning(script, host, target.hostname)) continue;
 
       ns.exec(script, host, threads, target.hostname);
-
       totalThreads += threads;
     }
+
     ns.print(`Threads started this cycle: ${totalThreads}`);
     await ns.sleep(interval);
   }
