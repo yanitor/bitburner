@@ -6,13 +6,22 @@ export async function main(ns: NS): Promise<void> {
   ns.disableLog('sleep');
   ns.disableLog('getServerSecurityLevel');
   ns.disableLog('getServerMoneyAvailable');
+  ns.disableLog('getServerMaxRam');
+  ns.disableLog('getServerUsedRam');
+  ns.disableLog('getServerMinSecurityLevel');
+  ns.disableLog('getServerMaxMoney');
+  ns.disableLog('scan');
+  ns.disableLog('getServerGrowth');
+  ns.disableLog('getServerRequiredHackingLevel');
+  ns.disableLog('getHackingLevel');
   ns.ui.openTail();
 
   const interval = CONFIG.SCHEDULER_INTERVAL;
+  let lastMode: string | '' = '';
 
   while (true) {
     ns.clearLog();
-    let totalThreads = 0; // pro Zyklus zurücksetzen
+    let totalThreads = 0;
 
     const targets = getBestTargets(ns, 1);
     const target = targets[0];
@@ -28,7 +37,6 @@ export async function main(ns: NS): Promise<void> {
       return ns.hasRootAccess(hostname) && ns.getServerMaxRam(hostname) > 0 && hostname !== 'home';
     });
 
-    // --- Zielzustand berechnen (einmal pro Zyklus) ---
     const sec = ns.getServerSecurityLevel(target.hostname);
     const minSec = ns.getServerMinSecurityLevel(target.hostname);
     const money = ns.getServerMoneyAvailable(target.hostname);
@@ -54,10 +62,20 @@ export async function main(ns: NS): Promise<void> {
       mode = 'HACK';
     }
 
+    if (mode !== lastMode && lastMode !== '') {
+      ns.print(`Mode changed: ${lastMode} → ${mode}, killing old workers...`);
+      for (const host of workers) {
+        ns.kill(CONFIG.HACK_SCRIPT, host, target.hostname);
+        ns.kill(CONFIG.GROW_SCRIPT, host, target.hostname);
+        ns.kill(CONFIG.WEAKEN_SCRIPT, host, target.hostname);
+      }
+      await ns.sleep(200); // kurzen Moment warten, bis RAM freigegeben ist
+    }
+    lastMode = mode;
+
     const scriptRam = ns.getScriptRam(script, 'home');
     const secRatio = minSec > 0 ? sec / minSec : 0;
 
-    // --- Dashboard nur einmal pro Zyklus ausgeben ---
     ns.print('=== Scheduler Dashboard ===');
     ns.print(`Mode:     ${mode}`);
     ns.print(`Target:   ${target.hostname}`);
@@ -75,22 +93,7 @@ export async function main(ns: NS): Promise<void> {
     ns.print(`Interval: ${interval} ms`);
     ns.print('---------------------------------');
 
-    // --- Worker starten ---
     for (const host of workers) {
-      const scriptsToStop = [CONFIG.WEAKEN_SCRIPT, CONFIG.GROW_SCRIPT, CONFIG.HACK_SCRIPT].filter(
-        (workerScript) => workerScript !== script,
-      );
-
-      for (const workerScript of scriptsToStop) {
-        const processes = ns.ps(host);
-        processes.forEach((process: { filename: string; args: (string | number | boolean)[]; pid: number }) => {
-          if (process.filename !== workerScript) return;
-          if (process.args[0] !== target.hostname) return;
-
-          ns.kill(process.pid);
-        });
-      }
-
       const maxRam = ns.getServerMaxRam(host);
       const usedRam = ns.getServerUsedRam(host);
       const freeRam = maxRam - usedRam;

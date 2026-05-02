@@ -18,6 +18,4 @@ export async function main(ns: NS): Promise<void> {
 
   ns.exec(SCHEDULER, 'home', 1);
   await ns.sleep(CONFIG.INIT_WATCHDOG_SLEEP);
-
-  ns.tprint('System Online');
 }
