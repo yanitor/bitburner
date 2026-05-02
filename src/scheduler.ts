@@ -77,15 +77,18 @@ export async function main(ns: NS): Promise<void> {
 
     // --- Worker starten ---
     for (const host of workers) {
-      if (script === CONFIG.WEAKEN_SCRIPT) {
-        ns.scriptKill(CONFIG.GROW_SCRIPT, host);
-        ns.scriptKill(CONFIG.HACK_SCRIPT, host);
-      } else if (script === CONFIG.GROW_SCRIPT) {
-        ns.scriptKill(CONFIG.WEAKEN_SCRIPT, host);
-        ns.scriptKill(CONFIG.HACK_SCRIPT, host);
-      } else {
-        ns.scriptKill(CONFIG.WEAKEN_SCRIPT, host);
-        ns.scriptKill(CONFIG.GROW_SCRIPT, host);
+      const scriptsToStop = [CONFIG.WEAKEN_SCRIPT, CONFIG.GROW_SCRIPT, CONFIG.HACK_SCRIPT].filter(
+        (workerScript) => workerScript !== script,
+      );
+
+      for (const workerScript of scriptsToStop) {
+        const processes = ns.ps(host);
+        processes.forEach((process: { filename: string; args: (string | number | boolean)[]; pid: number }) => {
+          if (process.filename !== workerScript) return;
+          if (process.args[0] !== target.hostname) return;
+
+          ns.kill(process.pid);
+        });
       }
 
       const maxRam = ns.getServerMaxRam(host);
