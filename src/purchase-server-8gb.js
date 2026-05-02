@@ -1,6 +1,6 @@
 /** @param {NS} ns */
 export async function main(ns) {
-  const ram = 8;
+  const ram = 512;
 
   let i = ns.cloud.getServerNames().length;
 
